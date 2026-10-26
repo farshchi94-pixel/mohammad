@@ -1,0 +1,42 @@
+name: scan
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests cairosvg
+      - name: Run scanner
+        working-directory: signal-hub
+        run: python scan.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+      - name: Publish data to the site root
+        run: |
+          for f in signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json; do
+            test -f "signal-hub/$f" && cp "signal-hub/$f" "$f" || true
+          done
+      - name: Save results
+        if: always()
+        run: |
+          git config user.name "signal-hub-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json signal-hub/*.json || true
+          git diff --cached --quiet || (git commit -m "chore: update market data" && git pull --rebase && git push)

@@ -1,42 +1,40 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
 
-function Router() {
-  // make sure to consider if you need authentication for certain routes
-  return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
+import Hero from './sections/Hero'
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
+import TickerGrid from './sections/TickerGrid'
+
+import Pricing from './sections/Pricing'
+
+import WhyUs from './sections/WhyUs'
+
+import CTA from './sections/CTA'
+
+import Footer from './sections/Footer'
 
 function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
+
+return (
+
+<>
+
+<Hero />
+
+<div className="bg-[#08090b]" style={{ height: '10vh' }} />
+
+<TickerGrid />
+
+<Pricing />
+
+<WhyUs />
+
+<CTA />
+
+<Footer />
+
+</>
+
+)
+
 }
 
-export default App;
+export default App

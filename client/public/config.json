@@ -1,0 +1,85 @@
+{
+  "sources": [
+    "mexc",
+    "gate"
+  ],
+  "majors": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "AAVEUSDT",
+    "INJUSDT",
+    "NEARUSDT",
+    "ATOMUSDT",
+    "DOTUSDT",
+    "LTCUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "TRXUSDT",
+    "SUIUSDT",
+    "APTUSDT",
+    "FILUSDT",
+    "UNIUSDT",
+    "TONUSDT",
+    "ETCUSDT",
+    "BCHUSDT"
+  ],
+  "memes": [
+    "SHIBUSDT",
+    "PEPEUSDT",
+    "FLOKIUSDT",
+    "WIFUSDT",
+    "BONKUSDT"
+  ],
+  "whale_symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "SUIUSDT"
+  ],
+  "whale_tf": "15m",
+  "whale_params": {},
+  "whale_htf": "4h",
+  "news_blackout_min": 30,
+  "wave": {"symbols": ["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","PAXGUSDT"], "leverage": 25, "risk_pct": 0.5, "rr": 2.0, "adaptive": true, "max_minutes": 15},
+  "trading": {
+    "mode": "paper",
+    "start_equity": 1000,
+    "risk_pct": 0.5,
+    "max_open": 3,
+    "max_leverage": 3,
+    "daily_loss_pct": 2,
+    "kill_switch": false,
+    "sources": [
+      "whalepro",
+      "consensus"
+    ],
+    "webhook_url": ""
+  },
+  "consensus_min": 4,
+  "consensus_required": [
+    "TECH"
+  ],
+  "unlocks": [],
+  "dex_min_liq": 100000,
+  "dex_min_votes": 4,
+  "watch_channels": [],
+  "hyperliquid_top": 25,
+  "hl_min_account": 500000,
+  "hl_event_min_usd": 500000,
+  "hyperliquid_wallets": [],
+  "solana_wallets": [],
+  "sol_min_usd": 2000
+}

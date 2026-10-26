@@ -106,6 +106,10 @@ temp/
 *.sqlite
 *.sqlite3
 
+# Python runtime cache
+__pycache__/
+*.py[cod]
+
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 

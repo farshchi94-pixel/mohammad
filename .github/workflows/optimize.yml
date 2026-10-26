@@ -1,0 +1,32 @@
+name: optimize
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Run optimizer
+        working-directory: signal-hub
+        run: python optimize.py
+      - name: Publish report to the site root
+        run: test -f signal-hub/optimize.json && cp signal-hub/optimize.json optimize.json || true
+      - name: Save report
+        if: always()
+        run: |
+          git config user.name "signal-hub-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add optimize.json signal-hub/optimize.json || true
+          git diff --cached --quiet || (git commit -m "chore: update optimization report" && git pull --rebase && git push)
