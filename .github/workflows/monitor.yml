@@ -1,0 +1,45 @@
+name: monitor-production
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitor-production
+  cancel-in-progress: true
+
+env:
+  SITE_URL: https://farshchi94-pixel.github.io/mohammad
+
+jobs:
+  public-site:
+    name: Public site health check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check public HTML and route manifest
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$SITE_URL/" -o /tmp/index.html
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$SITE_URL/manus-routes.json" -o /tmp/manus-routes.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          html = Path("/tmp/index.html").read_text(encoding="utf-8")
+          routes = json.loads(Path("/tmp/manus-routes.json").read_text(encoding="utf-8"))
+          assert "<html" in html.lower()
+          assert isinstance(routes.get("routes"), list)
+          print({"event": "public_site_health", "status": "ok", "routes": len(routes["routes"])})
+          PY
+      - name: Write monitoring summary
+        if: always()
+        run: |
+          {
+            echo "## Production monitoring"
+            echo "- Site: $SITE_URL"
+            echo "- Runbook: [pages-deploy-failure](../../blob/main/docs/runbooks/pages-deploy-failure.md)"
+          } >> "$GITHUB_STEP_SUMMARY"

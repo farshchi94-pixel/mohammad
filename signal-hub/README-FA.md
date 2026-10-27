@@ -22,23 +22,25 @@
 1. فایل زیپ را در گوشی باز کنید (روی آن بزنید تا از حالت فشرده خارج شود).
 2. در صفحهٔ مخزن: Add file ← Upload files. این فایل‌ها را انتخاب کنید: `index.html`، `scan.py`، `whale_pro.py`، `market.py`، `optimize.py`، `card.py`، `watch.py`، `consensus.py`، `trader.py`، `wave_rider.py`، `config.json`. پایین صفحه Commit changes.
 
-## مرحلهٔ ۳: ساخت فایل workflow (مهم)
-1. Add file ← **Create new file**.
-2. در کادر اسم دقیقاً بنویسید: `.github/workflows/scan.yml` (با نقطهٔ اول و اسلش‌ها؛ خودش پوشه می‌سازد).
-3. محتوای فایل `workflow-scan.yml` را کپی و داخل کادر paste کنید. Commit changes.
+## Workflowهای خودکار پروژه
+فایل‌های Workflow از قبل در مسیر `.github/workflows/` قرار دارند و نیازی به ساخت دستی آن‌ها نیست. `quality.yml` روی Pull Request و تغییرات کد، typecheck، تست، build، audit و syntax پایتون را اجرا می‌کند. `scan.yml` هر ۱۵ دقیقه اسکن بازار را اجرا می‌کند، خروجی JSON را اعتبارسنجی می‌کند، artifact نگه می‌دارد و فقط خروجی معتبر را commit می‌کند. `optimize.yml` گزارش بهینه‌سازی را هفتگی می‌سازد.
+
+برای اجرای دستی، به تب Actions بروید، Workflow موردنظر را انتخاب کنید و `Run workflow` را روی شاخهٔ `main` بزنید. برای خطاها از `docs/runbooks/scan-failure.md` و `docs/runbooks/pages-deploy-failure.md` استفاده کنید.
 
 ## مرحلهٔ ۴: گذاشتن کلیدها
 1. مخزن ← Settings ← Secrets and variables ← Actions ← New repository secret.
 2. برای هر کلیدی که دارید، یک secret با همان اسم جدول بالا بسازید (Name و Secret). کلید را هرگز داخل فایل‌ها ننویسید.
 
 ## مرحلهٔ ۵: روشن کردن سایت
-1. Settings ← Pages ← Source: Deploy from a branch ← Branch: `main` و پوشه `/ (root)` ← Save.
-2. بعد از یکی دو دقیقه آدرس بالای همان صفحه ظاهر می‌شود: `https://نام‌کاربری.github.io/radar/`
+1. Settings ← Pages ← Build and deployment ← Source: **GitHub Actions** ← Save.
+2. Workflow `deploy-pages` با هر push به `main` اجرا می‌شود و بعد از موفقیت smoke test، سایت را منتشر می‌کند.
+3. Workflow `monitor-production` هر ساعت صفحهٔ عمومی و `manus-routes.json` را بررسی می‌کند.
+4. آدرس سایت: `https://farshchi94-pixel.github.io/mohammad/`
 
 ## مرحلهٔ ۶: اولین اجرا
 1. تب **Actions** ← از لیست `scan` ← Run workflow ← Run workflow.
-2. حدود یک دقیقه صبر کنید تا سبز شود. اگر قرمز شد، روی آن بزنید، بخش «Run scanner» را باز کنید و **متن آخرین خطوط** را برای من بفرستید.
-3. اگر سبز شد، سایت را باز کنید. از این به بعد هر ۱۵ دقیقه خودش به‌روز می‌شود (GitHub گاهی تا چند دقیقه دیرتر اجرا می‌کند).
+2. حدود یک دقیقه صبر کنید تا سبز شود. اگر قرمز شد، Step `Validate output files` و runbook فارسی را بررسی کنید.
+3. اگر سبز شد، `deploy-pages` را بررسی کنید؛ این Workflow باید صفحهٔ اصلی و manifest را با HTTP 200 تأیید کند.
 
 ## «بازار» چطور وصل می‌شود؟ (واقعیت)
 هیچ لایهٔ جداگانه‌ای برای وصل کردن نیست. همین کد با اینترنت اجرا می‌شود و قیمت‌ها را از API های **عمومی** (MEXC، Gate، Hyperliquid، DexScreener و ...) می‌خواند و کلید نمی‌خواهد. من نمی‌توانم آن را برایتان اجرا کنم، چون محیط من به این سایت‌ها دسترسی ندارد و برنامه‌ای را شبانه‌روز اجرا نگه نمی‌دارد. خودتان یک بار طبق مراحل بالا GitHub Actions را روشن کنید (حدود ۱۰ تا ۱۵ دقیقه). بعد از آن خودش هر ۱۵ دقیقه واقعی کار می‌کند. اگر پیامی از خطا دید، متنش را برایم بفرستید.

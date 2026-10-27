@@ -1,0 +1,2 @@
+requests>=2.31,<3
+cairosvg>=2.7,<3

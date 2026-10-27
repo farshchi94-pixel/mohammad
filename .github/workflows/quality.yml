@@ -1,0 +1,80 @@
+name: quality
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "client/**"
+      - "server/**"
+      - "shared/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - ".github/workflows/quality.yml"
+  push:
+    branches: [main]
+    paths:
+      - "client/**"
+      - "server/**"
+      - "shared/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - ".github/workflows/quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.18.0"
+
+jobs:
+  quality:
+    name: Typecheck, test, build and audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm check
+
+      - name: Unit tests
+        run: pnpm test -- --runInBand
+
+      - name: Static build
+        run: pnpm build:static
+
+      - name: Dependency audit (report)
+        id: audit
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level high
+
+      - name: Surface audit status
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::warning::High or critical dependency advisories exist; see the Dependency audit step and plan remediation before production use."
+          echo "### Dependency audit warning" >> "$GITHUB_STEP_SUMMARY"
+          echo "The current dependency tree contains advisories. The report is intentionally non-blocking until dependencies are upgraded and retested." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Python syntax check
+        run: python3 -m compileall -q signal-hub

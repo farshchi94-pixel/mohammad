@@ -15,7 +15,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate:
+    name: Validate publish inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate static entrypoint and JSON
+        run: |
+          test -s index.html
+          test -s config.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in [Path("config.json"), Path("client/public/manus-routes.json")]:
+              json.loads(path.read_text(encoding="utf-8"))
+          for path in Path(".").glob("*.json"):
+              if path.name not in {"package.json", "tsconfig.json", "components.json", "template.json", "config.json"}:
+                  json.loads(path.read_text(encoding="utf-8"))
+          print("publish inputs: ok")
+          PY
   deploy:
+    needs: validate
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -36,3 +56,35 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+
+  smoke:
+    name: Public smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check published page and route manifest
+        env:
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          base="${PAGE_URL%/}"
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors "$base/" -o /tmp/index.html
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors "$base/manus-routes.json" -o /tmp/manus-routes.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          assert Path("/tmp/index.html").stat().st_size > 0
+          routes = json.loads(Path("/tmp/manus-routes.json").read_text())
+          assert isinstance(routes.get("routes"), list)
+          print({"event": "public_smoke_test", "status": "ok", "routes": len(routes["routes"])})
+          PY
+      - name: Write launch summary
+        if: always()
+        run: |
+          {
+            echo "## GitHub Pages deployment"
+            echo "- URL: ${{ needs.deploy.outputs.page_url }}"
+            echo "- Runbook: [pages-deploy-failure](../../blob/main/docs/runbooks/pages-deploy-failure.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
