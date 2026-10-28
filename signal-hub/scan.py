@@ -72,7 +72,7 @@ def normalize_candles(rows, tf, closed_only=True):
 
 def klines(sym, tf, n=500, min_n=60):
     cached = KLINE_CACHE.get((sym, tf))
-    if cached and len(cached) >= min(n, 500): return cached[-n:]
+    if cached and len(cached) >= n: return cached[-n:]
     for s in CFG.get("sources", ["mexc", "gate"]):
         try:
             c = normalize_candles(SRC[s](sym, tf, n), tf)
@@ -279,7 +279,7 @@ def run_whalepro():
     alerted = prev.get("alerted", {}); notified = set(prev.get("notified", [])); out = {}; all_tr = []; sec = TFSEC.get(tf, 900)
     syms = CFG.get("whale_symbols") or CFG["majors"][:10]
     def get(sym):
-        c = klines(sym, tf, 500, min_n=400); h = klines(sym, htf_tf, 500, min_n=250) if P.get("htf_filter") else None
+        c = klines(sym, tf, 1000, min_n=600); h = klines(sym, htf_tf, 500, min_n=250) if P.get("htf_filter") else None
         return sym, (c, h)
     with ThreadPoolExecutor(max_workers=min(8, max(2, len(syms)))) as ex: res = list(ex.map(get, syms))
     sent_res = [0]
