@@ -6,6 +6,7 @@ Run: python optimize.py [--quick]
 """
 import sys, json, time, random, itertools
 import scan, whale_pro as W
+from concurrent.futures import ThreadPoolExecutor
 
 GRID = {"stop_pct": [0.4, 0.6, 0.8, 1.0], "tp1_pct": [0.25, 0.35, 0.5], "tp2_pct": [0.7, 0.9, 1.3], "min_adx_val": [18, 22, 26], "model": ["Hybrid", "Breakout"]}
 QUICK = {"stop_pct": [0.6, 0.8], "tp1_pct": [0.35, 0.5], "tp2_pct": [0.9], "min_adx_val": [22], "model": ["Hybrid"]}
@@ -20,8 +21,11 @@ def history(sym, tf, bars):
         except Exception as e: print("history error", sym, e); break
         if not j: break
         rows = [[int(a[0]) * 1000, float(a[5]), float(a[3]), float(a[4]), float(a[2]), float(a[1])] for a in j]
-        out = rows + out; end = int(j[0][0]) - sec
+        out = rows + out
+        end = min(int(a[0]) for a in j) - sec
         if len(j) < 900: break
+    unique = {row[0]: row for row in out}
+    out = [unique[t] for t in sorted(unique)]
     return out[-bars:] if len(out) >= 600 else None
 
 def split_stats(trades, P, split_i):
@@ -45,19 +49,23 @@ def main():
     bars = 1500 if quick else 3000; base = dict(W.DEFAULT); base.update(scan.CFG.get("whale_params", {}))
     syms = scan.CFG.get("whale_symbols") or scan.CFG["majors"][:10]
     data = {}
-    for s in syms:
-        h = history(s, tf, bars)
-        if h: data[s] = h
+    def load_history(sym):
+        try: return sym, history(sym, tf, bars)
+        except Exception as exc: print("history error", sym, exc); return sym, None
+    with ThreadPoolExecutor(max_workers=min(4, max(2, len(syms)))) as ex:
+        for sym, h in ex.map(load_history, syms):
+            if h: data[sym] = h
     print("history loaded:", {k: len(v) for k, v in data.items()})
     if not data: print("no data"); return False
     keys = list(grid); combos = [dict(zip(keys, v)) for v in itertools.product(*grid.values())]
     cur_key = {k: base.get(k) for k in keys}
     if cur_key not in combos: combos.append(cur_key)
-    results = []; t0 = time.time()
+    results = []; current_trades = []; t0 = time.time()
     for ci, c in enumerate(combos):
         P = dict(base); P.update(c); tr_all, te_all = [], []
         for s, cs in data.items():
             split = int(len(cs) * .6); r = W.run(cs, P); a, b = split_stats(r["trades"], P, split); tr_all += a; te_all += b
+            if c == cur_key: current_trades += [t for t in r["trades"] if t["entry_i"] >= WARM]
         results.append({"params": c, "train": pooled(tr_all, P), "test": pooled(te_all, P), "key": c})
         if ci % 20 == 0: print(f"{ci}/{len(combos)} {time.time()-t0:.0f}s")
     def key_of(c): return tuple(c[k] for k in keys)
@@ -72,8 +80,7 @@ def main():
     robust = round(sum(nb) / len(nb), 2) if nb else None
     ranked = sorted([r for r in results if r["train"]["positions"] >= 25 and good(r)], key=lambda r: -((r["train"]["pf"] or 0) * min(1, r["train"]["positions"] / 60) ** .5 * (r["test"]["pf"] or 0)))[:5]
     # Monte Carlo for current params on all data
-    P = dict(base); allt = []
-    for s, cs in data.items(): allt += [t for t in W.run(cs, P)["trades"] if t["entry_i"] >= WARM]
+    P = dict(base); allt = current_trades
     allst = pooled(allt, P); mc = monte_carlo(allt, P)
     tpf = cur["test"]["pf"] or 0
     verdict = ("پایدار: روی داده دیده‌نشده هم سودده بود و همسایه‌های پارامترها هم تا حد خوبی سودده‌اند." if tpf > 1.1 and cur["test"]["positions"] >= 20 and (robust or 0) >= .6 else

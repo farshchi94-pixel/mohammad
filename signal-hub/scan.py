@@ -12,27 +12,33 @@ TG_TOKEN, TG_CHAT = os.getenv("TELEGRAM_TOKEN", ""), os.getenv("TELEGRAM_CHAT_ID
 HELIUS = os.getenv("HELIUS_API_KEY", "")
 NOW = lambda: int(time.time())
 H = {"User-Agent": "Mozilla/5.0"}
+HTTP = requests.Session()
+HTTP.headers.update(H)
+RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 
 def jget(url, params=None, headers=None):
     for i in range(3):
         try:
-            r = requests.get(url, params=params, headers=headers or H, timeout=25)
-            if r.status_code == 429: time.sleep(5 * (i + 1)); continue
+            r = HTTP.get(url, params=params, headers=headers, timeout=25)
+            if r.status_code in RETRYABLE:
+                wait = r.headers.get("Retry-After")
+                time.sleep(float(wait) if wait and wait.replace('.', '', 1).isdigit() else 1.5 * (i + 1))
+                continue
             r.raise_for_status(); return r.json()
         except Exception:
             if i == 2: raise
-            time.sleep(2)
+            time.sleep(1.5 * (i + 1))
 def jpost(url, body):
-    r = requests.post(url, json=body, headers=H, timeout=25); r.raise_for_status(); return r.json()
+    r = HTTP.post(url, json=body, timeout=25); r.raise_for_status(); return r.json()
 def fp(x): return float(f"{x:.6g}")
 def tg(text):
     if not TG_TOKEN or not TG_CHAT: print("[telegram off]", text.replace("\n", " | ")[:140]); return
-    try: requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", json={"chat_id": TG_CHAT, "text": text, "disable_web_page_preview": True}, timeout=25)
+    try: HTTP.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", json={"chat_id": TG_CHAT, "text": text, "disable_web_page_preview": True}, timeout=25)
     except Exception as e: print("telegram error", e)
 def tg_photo(png, caption):
     if not png: tg(caption); return
     if not TG_TOKEN or not TG_CHAT: print("[telegram off] card", len(png), "bytes |", caption.replace("\n", " | ")[:100]); return
-    try: requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto", data={"chat_id": TG_CHAT, "caption": caption[:1000]}, files={"photo": ("card.png", png)}, timeout=40)
+    try: HTTP.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto", data={"chat_id": TG_CHAT, "caption": caption[:1000]}, files={"photo": ("card.png", png)}, timeout=40)
     except Exception as e: print("telegram photo error", e); tg(caption)
 def load(path, default):
     try: return json.load(open(path, encoding="utf-8"))
@@ -42,16 +48,37 @@ def save(path, obj): json.dump(obj, open(path, "w", encoding="utf-8"), ensure_as
 # ---------------- candle sources (work from US servers) ----------------
 def kl_mexc(sym, tf, n):
     j = jget("https://api.mexc.com/api/v3/klines", {"symbol": sym, "interval": {"1h": "60m"}.get(tf, tf), "limit": min(n, 500)})
-    return [[int(a[0]), float(a[1]), float(a[2]), float(a[3]), float(a[4]), float(a[7])] for a in j]
+    return [[int(a[0]), float(a[1]), float(a[2]), float(a[3]), float(a[4]), float(a[5])] for a in j]
 def kl_gate(sym, tf, n):
     j = jget("https://api.gateio.ws/api/v4/spot/candlesticks", {"currency_pair": sym[:-4] + "_USDT", "interval": tf, "limit": n})
     return [[int(a[0]) * 1000, float(a[5]), float(a[3]), float(a[4]), float(a[2]), float(a[1])] for a in j]
 SRC = {"mexc": kl_mexc, "gate": kl_gate}
+KLINE_CACHE = {}
+
+def normalize_candles(rows, tf, closed_only=True):
+    """Sort, deduplicate and discard malformed or still-forming candles."""
+    clean = {}
+    for row in rows or []:
+        if len(row) < 6: continue
+        try:
+            t, o, h, l, c, v = int(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5])
+        except (TypeError, ValueError): continue
+        if min(o, h, l, c, v) < 0 or h < max(o, c) or l > min(o, c) or h < l: continue
+        clean[t] = [t, o, h, l, c, v]
+    out = [clean[t] for t in sorted(clean)]
+    if closed_only and out and out[-1][0] + TFSEC.get(tf, 900) * 1000 > NOW() * 1000:
+        out.pop()
+    return out
+
 def klines(sym, tf, n=500, min_n=60):
+    cached = KLINE_CACHE.get((sym, tf))
+    if cached and len(cached) >= min(n, 500): return cached[-n:]
     for s in CFG.get("sources", ["mexc", "gate"]):
         try:
-            c = SRC[s](sym, tf, n)
-            if len(c) > min_n: return c
+            c = normalize_candles(SRC[s](sym, tf, n), tf)
+            if len(c) > min_n:
+                KLINE_CACHE[(sym, tf)] = c
+                return c[-n:]
         except Exception: pass
     return None
 TFSEC = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
@@ -209,8 +236,10 @@ def run_signals():
     data = {"BTCUSDT": (b4, b15)}
     def get(s):
         c4, c15 = klines(s, "4h"), klines(s, "15m")
-        if c4 and c15 and len(c4) > 200: data[s] = (c4, c15)
-    with ThreadPoolExecutor(5) as ex: list(ex.map(get, syms))
+        return s, (c4, c15) if c4 and c15 and len(c4) > 200 else None
+    with ThreadPoolExecutor(max_workers=min(8, max(2, len(syms)))) as ex:
+        for sym, pair in ex.map(get, syms):
+            if pair: data[sym] = pair
     print(f"data ok for {len(data)} of {len(syms)+1} symbols")
     stillopen = []
     for s in op:
@@ -250,9 +279,9 @@ def run_whalepro():
     alerted = prev.get("alerted", {}); notified = set(prev.get("notified", [])); out = {}; all_tr = []; sec = TFSEC.get(tf, 900)
     syms = CFG.get("whale_symbols") or CFG["majors"][:10]
     def get(sym):
-        c = klines(sym, tf, 1000, min_n=600); h = klines(sym, htf_tf, 500) if P.get("htf_filter") else None
+        c = klines(sym, tf, 500, min_n=400); h = klines(sym, htf_tf, 500, min_n=250) if P.get("htf_filter") else None
         return sym, (c, h)
-    with ThreadPoolExecutor(5) as ex: res = list(ex.map(get, syms))
+    with ThreadPoolExecutor(max_workers=min(8, max(2, len(syms)))) as ex: res = list(ex.map(get, syms))
     sent_res = [0]
     for sym, (c, htf) in res:
         if not c: print("whale: no data", sym); continue
@@ -351,7 +380,7 @@ def run_whales():
     def one(a):
         try: return a, hl_positions(a)
         except Exception as e: print("hl error", a[:8], e); return a, None
-    with ThreadPoolExecutor(4) as ex: res = list(ex.map(one, ws))
+    with ThreadPoolExecutor(max_workers=min(8, max(2, len(ws)))) as ex: res = list(ex.map(one, ws))
     net = {}
     for a, ps in res:
         if ps is None: continue
