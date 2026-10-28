@@ -113,5 +113,8 @@ __pycache__/
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 
+# Firecrawl local cache and scraped outputs
+.firecrawl/
+
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
