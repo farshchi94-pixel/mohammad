@@ -57,6 +57,7 @@ jobs:
           name: signal-hub-scan-${{ github.run_id }}
           path: |
             signal-hub/*.json
+            signal-hub/cache/candles.json.gz
             *.json
           if-no-files-found: ignore
           retention-days: 14
@@ -66,5 +67,5 @@ jobs:
           git config user.name "signal-hub-bot"
           git config user.email "bot@users.noreply.github.com"
           git config pull.rebase true
-          git add signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json signal-hub/*.json || true
+          git add signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json signal-hub/*.json signal-hub/cache/candles.json.gz || true
           git diff --cached --quiet || (git commit -m "chore: update market data" && git pull --rebase && git push)

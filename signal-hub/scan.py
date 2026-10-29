@@ -3,7 +3,8 @@
 follows Hyperliquid whales and (optionally) Solana wallets. Writes signals.json / whales.json.
 Run:  python scan.py            (all)     python scan.py --signals | --whales
 """
-import os, sys, json, time, statistics, requests
+import os, sys, json, time, statistics, requests, gzip, tempfile
+from pathlib import Path
 import whale_pro
 from concurrent.futures import ThreadPoolExecutor
 
@@ -46,14 +47,45 @@ def load(path, default):
 def save(path, obj): json.dump(obj, open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
 # ---------------- candle sources (work from US servers) ----------------
-def kl_mexc(sym, tf, n):
-    j = jget("https://api.mexc.com/api/v3/klines", {"symbol": sym, "interval": {"1h": "60m"}.get(tf, tf), "limit": min(n, 500)})
+def kl_mexc(sym, tf, n, start_ms=None):
+    params = {"symbol": sym, "interval": {"1h": "60m"}.get(tf, tf), "limit": min(n, 500)}
+    if start_ms: params["startTime"] = int(start_ms)
+    j = jget("https://api.mexc.com/api/v3/klines", params)
     return [[int(a[0]), float(a[1]), float(a[2]), float(a[3]), float(a[4]), float(a[5])] for a in j]
-def kl_gate(sym, tf, n):
-    j = jget("https://api.gateio.ws/api/v4/spot/candlesticks", {"currency_pair": sym[:-4] + "_USDT", "interval": tf, "limit": n})
+def kl_gate(sym, tf, n, start_ms=None):
+    params = {"currency_pair": sym[:-4] + "_USDT", "interval": tf, "limit": min(n, 1000)}
+    if start_ms: params["from"] = int(start_ms // 1000)
+    j = jget("https://api.gateio.ws/api/v4/spot/candlesticks", params)
     return [[int(a[0]) * 1000, float(a[5]), float(a[3]), float(a[4]), float(a[2]), float(a[1])] for a in j]
 SRC = {"mexc": kl_mexc, "gate": kl_gate}
 KLINE_CACHE = {}
+CACHE_FILE = Path(os.getenv("SIGNAL_HUB_CACHE", "cache/candles.json.gz"))
+CACHE_STATS = {"requests": 0, "incremental_requests": 0, "bootstrap_requests": 0, "cache_hits": 0, "cache_misses": 0, "candles_merged": 0}
+
+def _load_kline_cache():
+    try:
+        with gzip.open(CACHE_FILE, "rt", encoding="utf-8") as f: raw = json.load(f)
+        for key, rows in raw.get("series", {}).items():
+            sym, tf = key.split("|", 1)
+            clean = normalize_candles(rows, tf)
+            if clean: KLINE_CACHE[(sym, tf)] = clean
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return
+
+def save_kline_cache():
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": 1, "updated": NOW(), "series": {f"{sym}|{tf}": rows[-1000:] for (sym, tf), rows in KLINE_CACHE.items()}}
+    fd, tmp = tempfile.mkstemp(prefix="candles-", suffix=".json.gz", dir=str(CACHE_FILE.parent))
+    try:
+        with os.fdopen(fd, "wb") as raw:
+            with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
+                gz.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        os.replace(tmp, CACHE_FILE)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+
+def cache_status():
+    return {**CACHE_STATS, "series": len(KLINE_CACHE), "file": str(CACHE_FILE)}
 
 def normalize_candles(rows, tf, closed_only=True):
     """Sort, deduplicate and discard malformed or still-forming candles."""
@@ -72,17 +104,34 @@ def normalize_candles(rows, tf, closed_only=True):
 
 def klines(sym, tf, n=500, min_n=60):
     cached = KLINE_CACHE.get((sym, tf))
-    if cached and len(cached) >= n: return cached[-n:]
+    sec = TFSEC.get(tf, 900)
     for s in CFG.get("sources", ["mexc", "gate"]):
         try:
+            CACHE_STATS["requests"] += 1
+            if cached:
+                start_ms = cached[-1][0] + sec * 1000
+                delta = normalize_candles(SRC[s](sym, tf, min(max(20, n - len(cached) + 8), 500), start_ms), tf)
+                merged = normalize_candles(cached + delta, tf)
+                CACHE_STATS["incremental_requests"] += 1
+                CACHE_STATS["candles_merged"] += len(delta)
+                if len(merged) >= min_n:
+                    KLINE_CACHE[(sym, tf)] = merged[-1000:]
+                    CACHE_STATS["cache_hits"] += 1
+                    return KLINE_CACHE[(sym, tf)][-n:]
             c = normalize_candles(SRC[s](sym, tf, n), tf)
+            CACHE_STATS["bootstrap_requests"] += 1
             if len(c) > min_n:
-                KLINE_CACHE[(sym, tf)] = c
-                return c[-n:]
+                KLINE_CACHE[(sym, tf)] = normalize_candles((cached or []) + c, tf)[-1000:]
+                CACHE_STATS["cache_misses"] += 1
+                return KLINE_CACHE[(sym, tf)][-n:]
         except Exception: pass
+    if cached and len(cached) >= min_n:
+        CACHE_STATS["cache_hits"] += 1
+        return cached[-n:]
     return None
 TFSEC = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
 CANDLES = {}
+_load_kline_cache()
 
 # ---------------- indicators ----------------
 def ema(a, n):
@@ -263,7 +312,7 @@ def run_signals():
                  "T": [fp(t) for t in p["T"]], "R": [round(x, 2) for x in p["R"]], "okn": r["okn"], "bias": round(B["total"], 1), "t_open": NOW(), "last_t": c15[-1][0], "status": "open", "hits": []}
             op.append(s); print("NEW", tier, sym, p["side"])
             if tier == "live": tg(sig_text(s, "🔔 سیگنال جدید"))
-    save("signals.json", {"updated": NOW(), "open": op, "closed": closed[-300:], "stats": stats(closed), "analysis": analysis, "ctx": {"fng": ctx.get("fng"), "btcDir": "long" if btc_total >= 3 else "short" if btc_total <= -3 else "neutral"}})
+    save("signals.json", {"updated": NOW(), "open": op, "closed": closed[-300:], "stats": stats(closed), "analysis": analysis, "ctx": {"fng": ctx.get("fng"), "btcDir": "long" if btc_total >= 3 else "short" if btc_total <= -3 else "neutral"}, "cache": cache_status()})
     save("candles.json", {"updated": NOW(), "tf": "15m", "c": CANDLES})
     return True
 
@@ -319,7 +368,7 @@ def run_whalepro():
     if time.gmtime().tm_wday == 6 and rs != today and rec["positions"]:
         tg_photo(card.record_card(rec, [{"sym": x["sym"], "side": x["side"], "pct": x.get("pct", 0) * 100, "reasons": [e["r"] for e in x["exits"]]} for x in all_tr], start), f"📊 رکورد زندهٔ Whale Pro: {rec['positions']} معامله | برد {rec['pos_win']}٪ | PF {rec['pf']} | خالص {rec['net_pct']:+.2f}٪\nهمهٔ معاملات بسته‌شده، با باخت‌ها."); rs = today
     save("whalepro.json", {"updated": NOW(), "start": start, "tf": tf, "params": {k: v for k, v in (whale_pro.DEFAULT | P).items()}, "symbols": out, "record": whale_pro.stats(all_tr, whale_pro.DEFAULT | P),
-                           "alerted": alerted, "notified": sorted(notified)[-500:], "record_sent": rs})
+                           "alerted": alerted, "notified": sorted(notified)[-500:], "record_sent": rs, "cache": cache_status()})
     print("whalepro ok:", len(out), "symbols")
     return True
 
@@ -421,29 +470,29 @@ def run_whales():
 
 if __name__ == "__main__":
     a = sys.argv[1:]; ok = True
-    if not a or "--market" in a:
-        try:
-            import market; market.run_market()
-        except Exception as e: print("market failed:", repr(e))
-    if not a or "--signals" in a:
-        try: ok = run_signals() and ok
-        except Exception as e: print("signals failed:", repr(e)); ok = False
-    if not a or "--whalepro" in a:
-        try: run_whalepro()
-        except Exception as e: print("whalepro failed:", repr(e))
-    if not a or "--consensus" in a:
-        try:
-            import consensus; consensus.run_consensus(); consensus.run_dex_consensus()
-        except Exception as e: print("consensus failed:", repr(e))
-    if not a or "--trader" in a:
-        try:
-            import trader; trader.run_trader()
-        except Exception as e: print("trader failed:", repr(e))
-    if "--watch" in a or (not a and CFG.get("watch_channels")):
-        try:
-            import watch; watch.run_watch()
-        except Exception as e: print("watch failed:", repr(e))
-    if not a or "--whales" in a:
-        try: run_whales()
-        except Exception as e: print("whales failed:", repr(e))
+    try:
+        if not a or "--market" in a:
+            try: import market; market.run_market()
+            except Exception as e: print("market failed:", repr(e))
+        if not a or "--signals" in a:
+            try: ok = run_signals() and ok
+            except Exception as e: print("signals failed:", repr(e)); ok = False
+        if not a or "--whalepro" in a:
+            try: run_whalepro()
+            except Exception as e: print("whalepro failed:", repr(e))
+        if not a or "--consensus" in a:
+            try:
+                import consensus; consensus.run_consensus(); consensus.run_dex_consensus()
+            except Exception as e: print("consensus failed:", repr(e))
+        if not a or "--trader" in a:
+            try: import trader; trader.run_trader()
+            except Exception as e: print("trader failed:", repr(e))
+        if "--watch" in a or (not a and CFG.get("watch_channels")):
+            try: import watch; watch.run_watch()
+            except Exception as e: print("watch failed:", repr(e))
+        if not a or "--whales" in a:
+            try: run_whales()
+            except Exception as e: print("whales failed:", repr(e))
+    finally:
+        save_kline_cache()
     sys.exit(0 if ok else 1)

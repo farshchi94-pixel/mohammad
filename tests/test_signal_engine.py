@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +12,23 @@ import whale_pro  # noqa: E402
 
 
 class SignalEngineTests(unittest.TestCase):
+    def test_cache_round_trip_preserves_latest_candle(self):
+        rows = [[0, 10, 11, 9, 10.5, 90], [900_000, 10.5, 11.5, 10, 11, 95]]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(scan, "NOW", return_value=2_000):
+            old_path, old_cache = scan.CACHE_FILE, dict(scan.KLINE_CACHE)
+            try:
+                scan.CACHE_FILE = Path(tmp) / "candles.json.gz"
+                scan.KLINE_CACHE.clear()
+                scan.KLINE_CACHE[("BTCUSDT", "15m")] = rows
+                scan.save_kline_cache()
+                scan.KLINE_CACHE.clear()
+                scan._load_kline_cache()
+                self.assertEqual(scan.KLINE_CACHE[("BTCUSDT", "15m")][-1][4], 11.0)
+            finally:
+                scan.CACHE_FILE = old_path
+                scan.KLINE_CACHE.clear()
+                scan.KLINE_CACHE.update(old_cache)
+
     def test_normalize_candles_sorts_deduplicates_and_drops_forming_bar(self):
         rows = [
             [1_800_000, 11, 12, 10, 11.5, 100],
