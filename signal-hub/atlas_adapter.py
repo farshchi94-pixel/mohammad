@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from atlas_quant.backtest import BacktestError, run_backtest
+from atlas_quant.backtest import BacktestEngine, BacktestError
 
 NOW = lambda: int(time.time())
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT")
@@ -66,8 +66,23 @@ def run_from_cache(
         "initial_capital": float(settings.get("initial_capital", 10_000)),
         "risk_pct": float(settings.get("risk_pct", 1)),
         "fee_pct": float(settings.get("fee_pct", 0.1)),
-        "stop_atr": float(settings.get("stop_atr", 2)),
+        "stop_atr": float(settings.get("atr_multiplier", settings.get("stop_atr", 2))),
         "reward_r": float(settings.get("reward_r", 2)),
+        "allow_short": bool(settings.get("allow_short", False)),
+        "ema_fast": int(settings.get("ema_fast", 55)),
+        "ema_slow": int(settings.get("ema_slow", 200)),
+        "adx_period": int(settings.get("adx_period", 14)),
+        "adx_min": float(settings.get("adx_min", 20)),
+        "rsi_period": int(settings.get("rsi_period", 14)),
+        "long_rsi_min": float(settings.get("long_rsi_min", 50)),
+        "long_rsi_max": float(settings.get("long_rsi_max", 70)),
+        "short_rsi_min": float(settings.get("short_rsi_min", 30)),
+        "short_rsi_max": float(settings.get("short_rsi_max", 50)),
+        "chop_period": int(settings.get("chop_period", 14)),
+        "chop_max": float(settings.get("chop_max", 61.8)),
+        "atr_period": int(settings.get("atr_period", 14)),
+        "atr_multiplier": float(settings.get("atr_multiplier", settings.get("stop_atr", 2))),
+        "breakeven_trigger": float(settings.get("breakeven_trigger", 0.5)),
     }
     output: dict[str, Any] = {
         "updated": NOW(),
@@ -80,19 +95,21 @@ def run_from_cache(
         "parameters": params,
         "symbols": {},
     }
+    engine = BacktestEngine(**params)
     ok_reports: list[tuple[str, dict[str, Any]]] = []
     for symbol in symbols:
         rows = list(cache.get((symbol, timeframe), []))[-limit:]
         candles = _to_candles(rows)
-        if len(candles) < 100:
+        required = max(100, int(params["ema_slow"]) + 2)
+        if len(candles) < required:
             output["symbols"][symbol] = {
                 "status": "insufficient_data",
                 "candles": len(candles),
-                "required": 100,
+                "required": required,
             }
             continue
         try:
-            report = run_backtest(candles, **params)
+            report = engine.run(candles)
             report.update({"status": "ok", "symbol": symbol, "timeframe": timeframe, "candles": len(candles)})
             report = _compact_report(report)
             output["symbols"][symbol] = report

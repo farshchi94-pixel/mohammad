@@ -10,11 +10,12 @@ sys.path.insert(0, str(ROOT / "signal-hub"))
 
 from atlas_adapter import run_from_cache  # noqa: E402
 from atlas_quant.backtest import run_backtest  # noqa: E402
+from atlas_quant.day_trader_skill import build_indicators  # noqa: E402
 
 
 class AtlasIntegrationTests(unittest.TestCase):
     @staticmethod
-    def candles(count=180):
+    def candles(count=260):
         rows = []
         price = 100.0
         for i in range(count):
@@ -30,6 +31,17 @@ class AtlasIntegrationTests(unittest.TestCase):
         ])
         self.assertFalse(result["real_orders_enabled"])
         self.assertIn("equity_curve", result)
+
+    def test_day_trader_skill_builds_all_required_indicators(self):
+        candles = [
+            {"time": row[0] / 1000, "open": row[1], "high": row[2], "low": row[3], "close": row[4], "volume": row[5]}
+            for row in self.candles()
+        ]
+        indicators = build_indicators(candles)
+        self.assertEqual(set(indicators), {"ema_fast", "ema_slow", "adx", "rsi", "chop", "atr"})
+        self.assertIsNotNone(indicators["ema_slow"][-1])
+        self.assertIsNotNone(indicators["adx"][-1])
+        self.assertIsNotNone(indicators["chop"][-1])
 
     def test_adapter_reads_cache_and_writes_compact_report(self):
         rows = self.candles()

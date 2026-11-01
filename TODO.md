@@ -13,11 +13,12 @@
 - [x] بررسی ویدئوی مرجع از نظر تناسب با داشبورد فارسی Signal Hub.
 - [x] گرفتن screenshot از داشبورد پس از اجرای تغییرات.
 
-## ادغام ATLAS QUANT v0.3
+## ادغام ATLAS QUANT و DayTraderSkill نسخهٔ اصلی
 
-- [x] انتقال منطق بک‌تست تاریخی long-only از آرشیو ATLAS به `signal-hub/atlas_quant/backtest.py` بدون افزودن مسیر سفارش واقعی.
-- [x] اتصال adapter به cache افزایشی کندل‌های Signal Hub و تولید `atlas.json` با وضعیت `PAPER ONLY` و `real_orders_enabled=false`.
+- [x] ادغام ماژول `DayTraderSkill` با فیلتر روند EMA55/EMA200، شرط ADX14 بزرگ‌تر از ۲۰، RSI14، منطقهٔ بدون معاملهٔ CHOP14 بالاتر از ۶۱٫۸ و ATR14.
+- [x] اتصال `BacktestEngine` به cache افزایشی کندل‌های Signal Hub و تولید `atlas.json` با وضعیت `PAPER ONLY` و `real_orders_enabled=false`.
+- [x] پیاده‌سازی حد ضرر پویا با ATR، هدف ثابت بر اساس R و انتقال حد ضرر به نقطهٔ ورود پس از رسیدن قیمت به ۵۰٪ مسیر هدف؛ پشتیبانی short در موتور با `allow_short=false` پیش‌فرض.
 - [x] اجرای خودکار ATLAS پس از مرحلهٔ دریافت/ادغام کندل‌ها در `scan.py` و افزودن خروجی به اعتبارسنجی و workflow انتشار.
-- [x] افزودن تب فارسی `ATLAS` به داشبورد و نمایش سرمایه، ریسک، کارمزد، بازده، نرخ برد، افت سرمایه و Profit Factor هر نماد.
-- [x] افزودن تست‌های deterministic برای بک‌تست، cache adapter و ردکردن دادهٔ ناکافی.
+- [x] افزودن تب فارسی `ATLAS` به داشبورد و نمایش شاخص‌های EMA/ADX/RSI/CHOP/ATR، سرمایه، ریسک، کارمزد، بازده، نرخ برد، افت سرمایه، Profit Factor و تعداد Breakeven هر نماد.
+- [x] افزودن تست‌های deterministic برای DayTraderSkill، بک‌تست، cache adapter و ردکردن دادهٔ ناکافی.
 - [ ] اجرای workflow اسکن زنده و بررسی گزارش ATLAS روی دادهٔ بازار تازه؛ این مرحله به دسترسی موفق workflow به APIهای عمومی نیاز دارد.
