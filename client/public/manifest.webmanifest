@@ -1,0 +1,11 @@
+{
+  "name": "Signal Hub | مرکز فرماندهی بازار",
+  "short_name": "Signal Hub",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1F3B",
+  "theme_color": "#2563EB",
+  "description": "داشبورد فارسی تحلیل و سیگنال بازار رمزارز"
+}
