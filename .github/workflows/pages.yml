@@ -45,8 +45,8 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p site
-          cp index.html config.json site/
-          for f in signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json optimize.json; do
+          cp index.html config.json manifest.webmanifest site/
+          for f in signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json atlas.json optimize.json; do
             test -f "$f" && cp "$f" site/ || true
           done
           touch site/.nojekyll

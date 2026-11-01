@@ -38,7 +38,7 @@ jobs:
         run: python validate_outputs.py
       - name: Publish data to the site root
         run: |
-          for f in signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json; do
+          for f in signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json atlas.json; do
             test -f "signal-hub/$f" && cp "signal-hub/$f" "$f" || true
           done
       - name: Write run summary
@@ -67,5 +67,5 @@ jobs:
           git config user.name "signal-hub-bot"
           git config user.email "bot@users.noreply.github.com"
           git config pull.rebase true
-          git add signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json signal-hub/*.json signal-hub/cache/candles.json.gz || true
+          git add signals.json whales.json whalepro.json candles.json market.json competitors.json consensus.json dex_consensus.json paper.json atlas.json signal-hub/*.json signal-hub/cache/candles.json.gz || true
           git diff --cached --quiet || (git commit -m "chore: update market data" && git pull --rebase && git push)

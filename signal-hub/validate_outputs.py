@@ -22,6 +22,7 @@ DEFAULT_OUTPUTS = (
     "consensus.json",
     "dex_consensus.json",
     "paper.json",
+    "atlas.json",
 )
 
 

@@ -477,6 +477,11 @@ if __name__ == "__main__":
         if not a or "--signals" in a:
             try: ok = run_signals() and ok
             except Exception as e: print("signals failed:", repr(e)); ok = False
+        if (not a or "--atlas" in a) and CFG.get("atlas", {}).get("enabled", True):
+            try:
+                import atlas_adapter
+                atlas_adapter.run_from_cache(KLINE_CACHE, CFG)
+            except Exception as e: print("atlas failed:", repr(e))
         if not a or "--whalepro" in a:
             try: run_whalepro()
             except Exception as e: print("whalepro failed:", repr(e))
